@@ -1,0 +1,1264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Don’t Chase The Mono Maze</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome for crisp retro icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Rajdhani:wght@500;700&display=swap');
+
+        body {
+            font-family: 'Rajdhani', sans-serif;
+            background-color: #0b0f19;
+            color: #e2e8f0;
+            user-select: none;
+            touch-action: manipulation;
+            overflow: hidden;
+        }
+
+        .pixel-font {
+            font-family: 'Press Start 2P', monospace;
+        }
+
+        /* Glassmorphism panel styling */
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
+        }
+
+        .neon-border-poly {
+            box-shadow: 0 0 15px rgba(56, 189, 248, 0.4);
+            border: 1px solid #38bdf8;
+        }
+
+        .neon-border-mono {
+            box-shadow: 0 0 15px rgba(244, 63, 94, 0.4);
+            border: 1px solid #f43f5e;
+        }
+
+        /* Custom Scrollbars */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.6);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #38bdf8;
+            border-radius: 3px;
+        }
+
+        /* Pulse animations for status indicators */
+        @keyframes pulse-glow {
+            0%, 100% { transform: scale(1); opacity: 0.9; }
+            50% { transform: scale(1.08); opacity: 1; filter: drop-shadow(0 0 10px #f43f5e); }
+        }
+
+        .anim-pulse-glow {
+            animation: pulse-glow 1.5s infinite ease-in-out;
+        }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col justify-between items-center relative select-none">
+
+    <!-- Top Floating HUD Bar -->
+    <header class="w-full max-w-7xl px-4 py-2 z-20 flex flex-wrap items-center justify-between glass-panel rounded-b-2xl border-t-0 shadow-lg gap-2 text-xs md:text-sm">
+        <div class="flex items-center gap-3">
+            <div class="flex flex-col">
+                <span class="text-xs text-sky-400 font-bold uppercase tracking-widest">Player</span>
+                <span id="hud-player-name" class="font-bold text-slate-100 text-sm md:text-base">Poly Explorer</span>
+            </div>
+            <div class="h-8 w-px bg-slate-700 mx-1"></div>
+            <div class="flex flex-col">
+                <span class="text-xs text-pink-400 font-bold uppercase tracking-widest">Level</span>
+                <span id="hud-level" class="font-bold text-pink-300 text-sm md:text-base pixel-font">1 / 100</span>
+            </div>
+        </div>
+
+        <!-- Health Bar & Timer -->
+        <div class="flex items-center gap-4">
+            <div class="flex flex-col w-28 md:w-40">
+                <div class="flex justify-between mb-1 text-xs">
+                    <span class="text-rose-400 font-bold">HEALTH</span>
+                    <span id="hud-hp-text" class="text-slate-200">100 HP</span>
+                </div>
+                <div class="w-full bg-slate-800 rounded-full h-3 border border-slate-700 overflow-hidden">
+                    <div id="hud-hp-bar" class="bg-gradient-to-r from-rose-600 to-emerald-400 h-full w-full transition-all duration-300"></div>
+                </div>
+            </div>
+
+            <div class="flex flex-col items-center glass-panel px-3 py-1 rounded-lg border-amber-500/30">
+                <span class="text-[10px] text-amber-400 font-bold tracking-wider">TIME REMAINING</span>
+                <span id="hud-timer" class="font-bold text-amber-300 pixel-font text-xs md:text-sm">15:00</span>
+            </div>
+        </div>
+
+        <!-- Objectives & Stats -->
+        <div class="flex items-center gap-3">
+            <div class="flex flex-col text-right">
+                <span class="text-xs text-emerald-400 font-bold">CHARMED POLY</span>
+                <span class="font-bold text-emerald-300 text-xs md:text-sm">
+                    <span id="hud-charmed">0</span> / <span id="hud-target">250</span>
+                </span>
+            </div>
+            <div class="flex flex-col text-right border-l border-slate-700 pl-3">
+                <span class="text-xs text-purple-400 font-bold">POTIONS</span>
+                <span class="font-bold text-purple-300 text-xs md:text-sm">
+                    <i class="fa-solid fa-flask text-pink-400 mr-1"></i><span id="hud-potions">0</span>
+                </span>
+            </div>
+            <button id="btn-pause" class="ml-2 bg-slate-800 hover:bg-slate-700 text-slate-200 p-2 rounded-xl border border-slate-600 transition hover:scale-105 active:scale-95">
+                <i class="fa-solid fa-pause text-base"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Game Canvas Area -->
+    <main class="relative flex-1 w-full flex items-center justify-center p-2 overflow-hidden">
+        <canvas id="gameCanvas" class="rounded-2xl shadow-2xl border border-slate-800 cursor-crosshair bg-slate-950"></canvas>
+
+        <!-- Dynamic On-screen Floating Action Toast -->
+        <div id="toast-message" class="absolute top-6 left-1/2 -translate-x-1/2 glass-panel px-6 py-2 rounded-full text-center text-sm font-bold opacity-0 transition-all duration-300 pointer-events-none border border-sky-400/50 text-sky-200 z-30">
+            Welcome to Mono Maze!
+        </div>
+
+        <!-- On Screen Action Buttons (Mobile & Quick Interaction) -->
+        <div class="absolute bottom-4 right-4 z-20 flex flex-col gap-2 md:hidden">
+            <button id="mobile-btn-potion" class="w-14 h-14 rounded-full bg-pink-600/80 active:bg-pink-500 text-white font-bold flex flex-col items-center justify-center border border-pink-300 shadow-lg text-xs">
+                <i class="fa-solid fa-flask text-lg"></i>
+                <span class="text-[9px]">SPACE</span>
+            </button>
+            <div class="flex gap-2">
+                <button id="mobile-btn-store" class="w-14 h-14 rounded-full bg-amber-600/80 active:bg-amber-500 text-white font-bold flex flex-col items-center justify-center border border-amber-300 shadow-lg text-xs">
+                    <i class="fa-solid fa-house-user text-lg"></i>
+                    <span class="text-[9px]">STORE [E]</span>
+                </button>
+                <button id="mobile-btn-charm" class="w-14 h-14 rounded-full bg-cyan-600/80 active:bg-cyan-500 text-white font-bold flex flex-col items-center justify-center border border-cyan-300 shadow-lg text-xs">
+                    <i class="fa-solid fa-heart text-lg"></i>
+                    <span class="text-[9px]">CHARM [Q]</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- On Screen D-Pad for Touch Devices -->
+        <div class="absolute bottom-4 left-4 z-20 grid grid-cols-3 gap-1 md:hidden opacity-80 hover:opacity-100 transition-opacity">
+            <div></div>
+            <button id="dpad-up" class="w-12 h-12 bg-slate-800/80 active:bg-sky-600 rounded-lg border border-slate-600 text-slate-200 flex items-center justify-center text-xl"><i class="fa-solid fa-caret-up"></i></button>
+            <div></div>
+            <button id="dpad-left" class="w-12 h-12 bg-slate-800/80 active:bg-sky-600 rounded-lg border border-slate-600 text-slate-200 flex items-center justify-center text-xl"><i class="fa-solid fa-caret-left"></i></button>
+            <div class="w-12 h-12 flex items-center justify-center text-slate-500 text-[10px] font-bold">MOVE</div>
+            <button id="dpad-right" class="w-12 h-12 bg-slate-800/80 active:bg-sky-600 rounded-lg border border-slate-600 text-slate-200 flex items-center justify-center text-xl"><i class="fa-solid fa-caret-right"></i></button>
+            <div></div>
+            <button id="dpad-down" class="w-12 h-12 bg-slate-800/80 active:bg-sky-600 rounded-lg border border-slate-600 text-slate-200 flex items-center justify-center text-xl"><i class="fa-solid fa-caret-down"></i></button>
+            <div></div>
+        </div>
+    </main>
+
+    <!-- Footer Controls Bar -->
+    <footer class="w-full max-w-7xl px-4 py-2 z-20 flex flex-wrap items-center justify-between text-xs text-slate-400 glass-panel rounded-t-2xl border-b-0">
+        <div class="hidden sm:flex items-center gap-4">
+            <span><kbd class="bg-slate-800 border border-slate-600 px-1.5 py-0.5 rounded text-sky-300">WASD / Arrows</kbd> Move</span>
+            <span><kbd class="bg-slate-800 border border-slate-600 px-1.5 py-0.5 rounded text-pink-300">Space</kbd> Grab Potion</span>
+            <span><kbd class="bg-slate-800 border border-slate-600 px-1.5 py-0.5 rounded text-amber-300">E</kbd> Store in Safe House</span>
+            <span><kbd class="bg-slate-800 border border-slate-600 px-1.5 py-0.5 rounded text-cyan-300">Q</kbd> Charm Poly</span>
+            <span><kbd class="bg-slate-800 border border-slate-600 px-1.5 py-0.5 rounded text-slate-300">Click</kbd> Target / Move</span>
+        </div>
+        <div class="flex items-center gap-3 ml-auto">
+            <button id="btn-sound-toggle" class="text-slate-300 hover:text-white flex items-center gap-1 bg-slate-800 px-3 py-1 rounded-lg border border-slate-700">
+                <i class="fa-solid fa-volume-high text-xs" id="sound-icon"></i> <span id="sound-text">Audio: ON</span>
+            </button>
+        </div>
+    </footer>
+
+    <!-- MAIN MENU OVERLAY MODAL -->
+    <div id="modal-main-menu" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/90 backdrop-blur-md p-4">
+        <div class="w-full max-w-lg glass-panel neon-border-poly p-6 md:p-8 rounded-3xl flex flex-col gap-6 text-center relative overflow-hidden">
+            <!-- Decorative BG elements -->
+            <div class="absolute -top-12 -right-12 w-32 h-32 bg-sky-500/10 rounded-full blur-2xl"></div>
+            <div class="absolute -bottom-12 -left-12 w-32 h-32 bg-pink-500/10 rounded-full blur-2xl"></div>
+
+            <div class="flex flex-col gap-1">
+                <div class="inline-block mx-auto bg-sky-500/10 border border-sky-400/30 px-3 py-1 rounded-full text-sky-300 text-xs font-semibold tracking-wider uppercase mb-2">
+                    2D Survival & Strategy
+                </div>
+                <h1 class="text-2xl md:text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-sky-400 via-pink-400 to-purple-400 tracking-tight">
+                    DON'T CHASE THE MONO MAZE
+                </h1>
+                <p class="text-xs text-slate-400">Collect love potions, charm single Poly, avoid Mono hazards & protect your progress!</p>
+            </div>
+
+            <!-- Inputs & Player Name Selection -->
+            <div class="flex flex-col gap-3 text-left">
+                <label class="text-xs font-bold text-slate-300 uppercase tracking-wider">Player Identifier</label>
+                <div class="flex gap-2">
+                    <input type="text" id="input-player-name" placeholder="Enter your name..." value="Poly Explorer" 
+                        class="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-slate-100 focus:outline-none focus:border-sky-400 text-sm">
+                    <select id="select-saved-names" class="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-sky-400">
+                        <option value="">Saved Players...</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Actions Buttons -->
+            <div class="flex flex-col gap-3">
+                <button id="btn-start-new" class="w-full py-3.5 bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 text-white font-bold rounded-2xl shadow-lg shadow-sky-500/25 transition transform hover:-translate-y-0.5 active:translate-y-0 text-sm flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-play"></i> Start New Journey
+                </button>
+                <button id="btn-resume-game" class="w-full py-3.5 bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-400 hover:to-purple-500 text-white font-bold rounded-2xl shadow-lg shadow-pink-500/25 transition transform hover:-translate-y-0.5 active:translate-y-0 text-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none">
+                    <i class="fa-solid fa-rotate-right"></i> Resume Saved Game
+                </button>
+            </div>
+
+            <!-- High Scores Section -->
+            <div class="border-t border-slate-800 pt-4 flex flex-col gap-2 text-left">
+                <span class="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <i class="fa-solid fa-trophy"></i> Hall of Fame (High Scores)
+                </span>
+                <div id="leaderboard-list" class="max-h-32 overflow-y-auto space-y-1 pr-1 text-xs text-slate-300">
+                    <div class="text-center text-slate-500 py-2 italic">No recorded high scores yet!</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- PAUSE / IN-GAME MENU MODAL -->
+    <div id="modal-pause" class="fixed inset-0 z-50 hidden flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
+        <div class="w-full max-w-sm glass-panel p-6 rounded-3xl text-center flex flex-col gap-5 border border-slate-700">
+            <h2 class="text-xl font-bold text-slate-100 pixel-font text-amber-400">GAME PAUSED</h2>
+            <div class="flex flex-col gap-3">
+                <button id="btn-resume-unpause" class="py-3 bg-sky-600 hover:bg-sky-500 text-white font-bold rounded-xl text-sm transition">
+                    Resume Game
+                </button>
+                <button id="btn-manual-save" class="py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-sm transition flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-floppy-disk"></i> Save Game Progress
+                </button>
+                <button id="btn-exit-main-menu" class="py-3 bg-slate-800 hover:bg-slate-700 text-rose-400 font-bold rounded-xl text-sm transition border border-slate-700">
+                    Exit to Main Menu
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- GAME OVER / VICTORY MODAL -->
+    <div id="modal-end-game" class="fixed inset-0 z-50 hidden flex items-center justify-center bg-slate-950/90 backdrop-blur-md p-4">
+        <div id="end-game-card" class="w-full max-w-md glass-panel p-6 md:p-8 rounded-3xl text-center flex flex-col gap-5 border border-amber-500/50 shadow-2xl">
+            <div id="end-game-icon" class="text-5xl text-amber-400 mx-auto">
+                <i class="fa-solid fa-trophy"></i>
+            </div>
+            <h2 id="end-game-title" class="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-amber-300 to-yellow-500 pixel-font">
+                GAME COMPLETED!
+            </h2>
+            <div id="end-game-body" class="text-xs md:text-sm text-slate-300 leading-relaxed flex flex-col gap-3 bg-slate-900/60 p-4 rounded-2xl border border-slate-800">
+                <p class="font-bold text-slate-100">Thank You! This is your High Score!</p>
+                <p id="end-game-message" class="text-emerald-300 font-semibold">
+                    Congratulations on completing Don’t Chase The Mono Maze! Long Live Polyamory Maze!
+                </p>
+                <div class="grid grid-cols-2 gap-2 pt-2 border-t border-slate-800 text-left">
+                    <div>Final Score: <span id="end-score" class="font-bold text-amber-400">0</span></div>
+                    <div>Charmed Poly: <span id="end-charmed" class="font-bold text-sky-400">0</span></div>
+                    <div>Level Reached: <span id="end-level" class="font-bold text-pink-400">1</span></div>
+                    <div>Potions Secured: <span id="end-potions" class="font-bold text-purple-400">0</span></div>
+                </div>
+            </div>
+            <button id="btn-end-return" class="w-full py-3.5 bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 text-white font-bold rounded-2xl shadow-lg text-sm transition">
+                Return to Main Menu
+            </button>
+        </div>
+    </div>
+
+    <!-- JAVASCRIPT LOGIC & ENGINE -->
+    <script>
+        /**
+         * DON'T CHASE THE MONO MAZE - 2D Engine & Mechanics Code
+         */
+
+        // --- Audio Synthesizer via Web Audio API ---
+        class SoundEffects {
+            constructor() {
+                this.ctx = null;
+                this.enabled = true;
+            }
+
+            init() {
+                if (!this.ctx) {
+                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                    if (AudioCtx) this.ctx = new AudioCtx();
+                }
+            }
+
+            playTone(freq, type = 'sine', duration = 0.1, gainVal = 0.1) {
+                if (!this.enabled || !this.ctx) return;
+                try {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = type;
+                    osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+                    gain.gain.setValueAtTime(gainVal, this.ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.0001, this.ctx.currentTime + duration);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start();
+                    osc.stop(this.ctx.currentTime + duration);
+                } catch(e) {}
+            }
+
+            playPotionPickup() {
+                this.playTone(523.25, 'sine', 0.1, 0.15); // C5
+                setTimeout(() => this.playTone(659.25, 'sine', 0.15, 0.15), 80); // E5
+                setTimeout(() => this.playTone(783.99, 'sine', 0.2, 0.15), 160); // G5
+            }
+
+            playCharm() {
+                this.playTone(440, 'triangle', 0.1, 0.2);
+                setTimeout(() => this.playTone(880, 'sine', 0.25, 0.2), 90);
+            }
+
+            playStorePotion() {
+                this.playTone(330, 'square', 0.1, 0.1);
+                setTimeout(() => this.playTone(440, 'square', 0.15, 0.1), 100);
+            }
+
+            playDamage() {
+                this.playTone(120, 'sawtooth', 0.25, 0.3);
+                setTimeout(() => this.playTone(80, 'sawtooth', 0.3, 0.3), 100);
+            }
+
+            playVictory() {
+                const notes = [440, 554.37, 659.25, 880];
+                notes.forEach((freq, idx) => {
+                    setTimeout(() => this.playTone(freq, 'triangle', 0.3, 0.2), idx * 150);
+                });
+            }
+        }
+
+        const sfx = new SoundEffects();
+
+        // --- Maze Engine Configuration ---
+        const TILE_SIZE = 40;
+        const MAZE_COLS = 21; // Must be odd for recursive backtracker
+        const MAZE_ROWS = 17; // Must be odd
+
+        // Tile Type Definitions
+        const TILE = {
+            PATH: 0,
+            WALL: 1,
+            HOUSE: 2,
+            ONLINE_ZONE: 3
+        };
+
+        // --- Game State Object ---
+        const gameState = {
+            active: false,
+            paused: false,
+            playerName: "Poly Explorer",
+            level: 1,
+            score: 0,
+            health: 100,
+            maxHealth: 100,
+            charmedCount: 0,
+            targetPolyCount: 250,
+            carriedPotions: 0,
+            securedPotions: 0,
+            timeRemainingSec: 15 * 60,
+            timerInterval: null,
+            maze: [],
+            safeHouses: [],
+            onlineZones: [],
+            entities: {
+                player: { x: 1, y: 1, px: 40, py: 40, speed: 3.5, targetPx: null, targetPy: null },
+                potions: [],
+                polyNPCs: [],
+                monoEnemies: []
+            }
+        };
+
+        // Keys state tracker
+        const keys = {};
+
+        // DOM Element Cache
+        const dom = {
+            canvas: document.getElementById('gameCanvas'),
+            ctx: document.getElementById('gameCanvas').getContext('2d'),
+            hudPlayerName: document.getElementById('hud-player-name'),
+            hudLevel: document.getElementById('hud-level'),
+            hudHpText: document.getElementById('hud-hp-text'),
+            hudHpBar: document.getElementById('hud-hp-bar'),
+            hudTimer: document.getElementById('hud-timer'),
+            hudCharmed: document.getElementById('hud-charmed'),
+            hudTarget: document.getElementById('hud-target'),
+            hudPotions: document.getElementById('hud-potions'),
+            toastMsg: document.getElementById('toast-message'),
+            modalMain: document.getElementById('modal-main-menu'),
+            modalPause: document.getElementById('modal-pause'),
+            modalEnd: document.getElementById('modal-end-game'),
+            inputPlayerName: document.getElementById('input-player-name'),
+            selectSavedNames: document.getElementById('select-saved-names'),
+            btnStartNew: document.getElementById('btn-start-new'),
+            btnResumeGame: document.getElementById('btn-resume-game'),
+            btnPause: document.getElementById('btn-pause'),
+            btnResumeUnpause: document.getElementById('btn-resume-unpause'),
+            btnManualSave: document.getElementById('btn-manual-save'),
+            btnExitMainMenu: document.getElementById('btn-exit-main-menu'),
+            btnEndReturn: document.getElementById('btn-end-return'),
+            btnSoundToggle: document.getElementById('btn-sound-toggle'),
+            leaderboardList: document.getElementById('leaderboard-list')
+        };
+
+        function resizeCanvas() {
+            dom.canvas.width = MAZE_COLS * TILE_SIZE;
+            dom.canvas.height = MAZE_ROWS * TILE_SIZE;
+        }
+
+        // --- Maze Generator (Recursive Backtracker) ---
+        function generateMaze(cols, rows) {
+            const grid = Array.from({ length: rows }, () => Array(cols).fill(TILE.WALL));
+
+            function carve(x, y) {
+                grid[y][x] = TILE.PATH;
+                const dirs = [
+                    [0, -2], [0, 2], [-2, 0], [2, 0]
+                ].sort(() => Math.random() - 0.5);
+
+                for (const [dx, dy] of dirs) {
+                    const nx = x + dx;
+                    const ny = y + dy;
+                    if (nx > 0 && nx < cols - 1 && ny > 0 && ny < rows - 1 && grid[ny][nx] === TILE.WALL) {
+                        grid[y + dy / 2][x + dx / 2] = TILE.PATH;
+                        carve(nx, ny);
+                    }
+                }
+            }
+
+            carve(1, 1);
+
+            // Add Safe Houses along walls/paths
+            gameState.safeHouses = [];
+            let houseTargetCount = 3 + Math.floor(gameState.level / 15);
+            for (let i = 0; i < houseTargetCount; i++) {
+                let rx = Math.floor(Math.random() * (cols - 2)) + 1;
+                let ry = Math.floor(Math.random() * (rows - 2)) + 1;
+                if (grid[ry][rx] === TILE.PATH && !(rx === 1 && ry === 1)) {
+                    grid[ry][rx] = TILE.HOUSE;
+                    gameState.safeHouses.push({ x: rx, y: ry });
+                }
+            }
+
+            // Levels 76-100: Add Online Dating Zones
+            gameState.onlineZones = [];
+            if (gameState.level >= 76) {
+                for (let i = 0; i < 2; i++) {
+                    let rx = Math.floor(Math.random() * (cols - 2)) + 1;
+                    let ry = Math.floor(Math.random() * (rows - 2)) + 1;
+                    if (grid[ry][rx] === TILE.PATH && !(rx === 1 && ry === 1)) {
+                        grid[ry][rx] = TILE.ONLINE_ZONE;
+                        gameState.onlineZones.push({ x: rx, y: ry });
+                    }
+                }
+            }
+
+            return grid;
+        }
+
+        // --- Level Configuration Setup ---
+        function setupLevelConfig(lvl) {
+            gameState.level = lvl;
+            
+            if (lvl <= 25) {
+                gameState.targetPolyCount = 250;
+                gameState.timeRemainingSec = 15 * 60;
+            } else if (lvl <= 50) {
+                gameState.targetPolyCount = 500;
+                gameState.timeRemainingSec = 30 * 60;
+            } else if (lvl <= 75) {
+                gameState.targetPolyCount = 750;
+                gameState.timeRemainingSec = 45 * 60;
+            } else {
+                gameState.targetPolyCount = 1000;
+                gameState.timeRemainingSec = 60 * 60;
+            }
+
+            // Build Maze Grid
+            gameState.maze = generateMaze(MAZE_COLS, MAZE_ROWS);
+
+            // Spawn Player
+            gameState.entities.player.x = 1;
+            gameState.entities.player.y = 1;
+            gameState.entities.player.px = 1 * TILE_SIZE + TILE_SIZE / 2;
+            gameState.entities.player.py = 1 * TILE_SIZE + TILE_SIZE / 2;
+            gameState.entities.player.targetPx = null;
+            gameState.entities.player.targetPy = null;
+
+            // Spawn Potions
+            gameState.entities.potions = [];
+            let potionCount = 6 + Math.min(10, Math.floor(lvl / 10));
+            for (let i = 0; i < potionCount; i++) {
+                let pos = getRandomPathCell();
+                if (pos) {
+                    gameState.entities.potions.push({
+                        id: Math.random(),
+                        x: pos.x,
+                        y: pos.y,
+                        px: pos.x * TILE_SIZE + TILE_SIZE / 2,
+                        py: pos.y * TILE_SIZE + TILE_SIZE / 2
+                    });
+                }
+            }
+
+            // Spawn Poly NPCs & Mono Enemies
+            gameState.entities.polyNPCs = [];
+            gameState.entities.monoEnemies = [];
+
+            let polyCount = 7 + Math.min(12, Math.floor(lvl / 8));
+            let monoCount = 2 + Math.min(8, Math.floor(lvl / 12));
+
+            for (let i = 0; i < polyCount; i++) {
+                let pos = getRandomPathCell();
+                if (pos) {
+                    let isFakeMono = (lvl >= 26) && (Math.random() < 0.35);
+                    let isRelationshipHazard = (lvl >= 51 && !isFakeMono) && (Math.random() < 0.25);
+
+                    gameState.entities.polyNPCs.push({
+                        id: Math.random(),
+                        x: pos.x,
+                        y: pos.y,
+                        px: pos.x * TILE_SIZE + TILE_SIZE / 2,
+                        py: pos.y * TILE_SIZE + TILE_SIZE / 2,
+                        isFakeMono: isFakeMono,
+                        isRelationshipHazard: isRelationshipHazard,
+                        charmed: false,
+                        moveTimer: 0,
+                        dir: Math.floor(Math.random() * 4)
+                    });
+                }
+            }
+
+            for (let i = 0; i < monoCount; i++) {
+                let pos = getRandomPathCell(3);
+                if (pos) {
+                    gameState.entities.monoEnemies.push({
+                        id: Math.random(),
+                        x: pos.x,
+                        y: pos.y,
+                        px: pos.x * TILE_SIZE + TILE_SIZE / 2,
+                        py: pos.y * TILE_SIZE + TILE_SIZE / 2,
+                        speed: 1.8 + (lvl * 0.015),
+                        dir: Math.floor(Math.random() * 4)
+                    });
+                }
+            }
+
+            updateHUD();
+            showToast(`Level ${lvl} Started! Collect potions & charm Poly!`);
+        }
+
+        function getRandomPathCell(minDistFromPlayer = 0) {
+            let valid = [];
+            for (let r = 1; r < MAZE_ROWS - 1; r++) {
+                for (let c = 1; c < MAZE_COLS - 1; c++) {
+                    if (gameState.maze[r] && gameState.maze[r][c] === TILE.PATH) {
+                        let dist = Math.hypot(c - gameState.entities.player.x, r - gameState.entities.player.y);
+                        if (dist >= minDistFromPlayer) {
+                            valid.push({ x: c, y: r });
+                        }
+                    }
+                }
+            }
+            if (valid.length === 0) return { x: 1, y: 1 };
+            return valid[Math.floor(Math.random() * valid.length)];
+        }
+
+        // Helper: Toast Notifications
+        function showToast(msg) {
+            dom.toastMsg.innerText = msg;
+            dom.toastMsg.style.opacity = '1';
+            clearTimeout(dom.toastMsg._timer);
+            dom.toastMsg._timer = setTimeout(() => {
+                dom.toastMsg.style.opacity = '0';
+            }, 3000);
+        }
+
+        // --- Keyboard & Input Listeners ---
+        window.addEventListener('keydown', (e) => {
+            keys[e.key.toLowerCase()] = true;
+            if (e.key === ' ' || e.key === 'Spacebar') {
+                e.preventDefault();
+                attemptGrabPotion();
+            } else if (e.key.toLowerCase() === 'e') {
+                attemptStorePotion();
+            } else if (e.key.toLowerCase() === 'q') {
+                attemptCharmPoly();
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            keys[e.key.toLowerCase()] = false;
+        });
+
+        const dpadMap = {
+            'dpad-up': 'w',
+            'dpad-down': 's',
+            'dpad-left': 'a',
+            'dpad-right': 'd'
+        };
+
+        Object.entries(dpadMap).forEach(([id, key]) => {
+            const btn = document.getElementById(id);
+            if (!btn) return;
+            const startHandler = (e) => { e.preventDefault(); keys[key] = true; };
+            const endHandler = (e) => { e.preventDefault(); keys[key] = false; };
+            btn.addEventListener('touchstart', startHandler);
+            btn.addEventListener('touchend', endHandler);
+            btn.addEventListener('mousedown', startHandler);
+            btn.addEventListener('mouseup', endHandler);
+        });
+
+        document.getElementById('mobile-btn-potion')?.addEventListener('click', () => attemptGrabPotion());
+        document.getElementById('mobile-btn-store')?.addEventListener('click', () => attemptStorePotion());
+        document.getElementById('mobile-btn-charm')?.addEventListener('click', () => attemptCharmPoly());
+
+        dom.canvas.addEventListener('click', (e) => {
+            if (!gameState.active || gameState.paused) return;
+            const rect = dom.canvas.getBoundingClientRect();
+            const clickX = (e.clientX - rect.left) * (dom.canvas.width / rect.width);
+            const clickY = (e.clientY - rect.top) * (dom.canvas.height / rect.height);
+            
+            const tileC = Math.floor(clickX / TILE_SIZE);
+            const tileR = Math.floor(clickY / TILE_SIZE);
+
+            let potion = gameState.entities.potions.find(p => Math.hypot(p.px - clickX, p.py - clickY) < TILE_SIZE);
+            if (potion) {
+                attemptGrabPotion(potion);
+                return;
+            }
+
+            let poly = gameState.entities.polyNPCs.find(p => Math.hypot(p.px - clickX, p.py - clickY) < TILE_SIZE);
+            if (poly) {
+                attemptCharmPoly(poly);
+                return;
+            }
+
+            let house = gameState.safeHouses.find(h => h.x === tileC && h.y === tileR);
+            if (house) {
+                attemptStorePotion();
+                return;
+            }
+
+            if (isPassable(tileC, tileR)) {
+                gameState.entities.player.targetPx = clickX;
+                gameState.entities.player.targetPy = clickY;
+            }
+        });
+
+        // --- Core Interactions ---
+        function attemptGrabPotion(specificPotion = null) {
+            if (!gameState.active || gameState.paused) return;
+
+            const p = gameState.entities.player;
+            let targetPotion = specificPotion || gameState.entities.potions.find(pot => 
+                Math.hypot(pot.px - p.px, pot.py - p.py) < TILE_SIZE * 1.5
+            );
+
+            if (!targetPotion) {
+                showToast("No love potion within reach!");
+                return;
+            }
+
+            let isSpotted = gameState.entities.monoEnemies.some(m => hasLineOfSight(m, p));
+            if (isSpotted) {
+                showToast("WARNING: Mono is looking! Cannot pick up potion!");
+                sfx.playDamage();
+                return;
+            }
+
+            gameState.entities.potions = gameState.entities.potions.filter(pt => pt.id !== targetPotion.id);
+            gameState.carriedPotions++;
+            gameState.score += 50;
+            sfx.playPotionPickup();
+            showToast("Collected Love Potion! Secure it in a Safe House!");
+            updateHUD();
+        }
+
+        function attemptStorePotion() {
+            if (!gameState.active || gameState.paused) return;
+            const p = gameState.entities.player;
+            const currentTileX = Math.floor(p.px / TILE_SIZE);
+            const currentTileY = Math.floor(p.py / TILE_SIZE);
+
+            const nearHouse = gameState.safeHouses.some(h => 
+                Math.hypot(h.x - currentTileX, h.y - currentTileY) <= 1.5
+            );
+
+            if (!nearHouse) {
+                showToast("You must be next to a Safe House (yellow) to store potions!");
+                return;
+            }
+
+            if (gameState.carriedPotions <= 0) {
+                showToast("No carried potions to store!");
+                return;
+            }
+
+            gameState.securedPotions += gameState.carriedPotions;
+            gameState.score += gameState.carriedPotions * 150;
+            showToast(`Stored ${gameState.carriedPotions} Potion(s) safely in House!`);
+            gameState.carriedPotions = 0;
+            sfx.playStorePotion();
+            updateHUD();
+        }
+
+        function attemptCharmPoly(specificPoly = null) {
+            if (!gameState.active || gameState.paused) return;
+            const p = gameState.entities.player;
+
+            let poly = specificPoly || gameState.entities.polyNPCs.find(npc => 
+                Math.hypot(npc.px - p.px, npc.py - p.py) < TILE_SIZE * 1.5
+            );
+
+            if (!poly) {
+                showToast("No Poly character nearby to charm!");
+                return;
+            }
+
+            if (poly.isFakeMono) {
+                sfx.playDamage();
+                triggerEnemyPenalty("Trapped! This Poly transformed into a Mono!");
+                gameState.entities.polyNPCs = gameState.entities.polyNPCs.filter(n => n.id !== poly.id);
+                return;
+            }
+
+            if (poly.isRelationshipHazard) {
+                sfx.playDamage();
+                triggerEnemyPenalty("Dangerous Encounter! Character wanted monogamous marriage!");
+                gameState.entities.polyNPCs = gameState.entities.polyNPCs.filter(n => n.id !== poly.id);
+                return;
+            }
+
+            poly.charmed = true;
+            gameState.charmedCount++;
+            gameState.score += 100;
+            sfx.playCharm();
+            showToast("Safe Poly Charmed! Progression added!");
+            
+            gameState.entities.polyNPCs = gameState.entities.polyNPCs.filter(n => n.id !== poly.id);
+            updateHUD();
+
+            if (gameState.charmedCount >= gameState.targetPolyCount) {
+                advanceLevel();
+            }
+        }
+
+        function triggerEnemyPenalty(reason = "Caught by Mono!") {
+            gameState.health -= 25;
+            let lostPotions = Math.ceil(gameState.carriedPotions * 0.5);
+            gameState.carriedPotions -= lostPotions;
+            
+            sfx.playDamage();
+            showToast(`${reason} Lost 25 HP & 50% carried potions!`);
+
+            if (gameState.health <= 0) {
+                gameState.health = 0;
+                gameOver(false, "Your health dropped to 0! Mono caught you!");
+            }
+            updateHUD();
+        }
+
+        function hasLineOfSight(entityA, entityB) {
+            let x0 = Math.floor(entityA.px / TILE_SIZE);
+            let y0 = Math.floor(entityA.py / TILE_SIZE);
+            let x1 = Math.floor(entityB.px / TILE_SIZE);
+            let y1 = Math.floor(entityB.py / TILE_SIZE);
+
+            let dx = Math.abs(x1 - x0);
+            let dy = Math.abs(y1 - y0);
+            let sx = x0 < x1 ? 1 : -1;
+            let sy = y0 < y1 ? 1 : -1;
+            let err = dx - dy;
+
+            while (true) {
+                if (x0 < 0 || x0 >= MAZE_COLS || y0 < 0 || y0 >= MAZE_ROWS) return false;
+                if (gameState.maze[y0] && gameState.maze[y0][x0] === TILE.WALL) return false;
+                if (x0 === x1 && y0 === y1) break;
+
+                let e2 = 2 * err;
+                if (e2 > -dy) { err -= dy; x0 += sx; }
+                if (e2 < dx) { err += dx; y0 += sy; }
+            }
+            return true;
+        }
+
+        function isPassable(col, row) {
+            if (col < 0 || col >= MAZE_COLS || row < 0 || row >= MAZE_ROWS) return false;
+            return gameState.maze[row] && gameState.maze[row][col] !== TILE.WALL;
+        }
+
+        // --- Game Update Loop ---
+        function updateGameLogic() {
+            if (!gameState.active || gameState.paused) return;
+
+            const p = gameState.entities.player;
+
+            let moveX = 0;
+            let moveY = 0;
+
+            if (keys['w'] || keys['arrowup']) moveY -= 1;
+            if (keys['s'] || keys['arrowdown']) moveY += 1;
+            if (keys['a'] || keys['arrowleft']) moveX -= 1;
+            if (keys['d'] || keys['arrowright']) moveX += 1;
+
+            if (moveX !== 0 || moveY !== 0) {
+                p.targetPx = null;
+                let norm = Math.hypot(moveX, moveY);
+                let nextPx = p.px + (moveX / norm) * p.speed;
+                let nextPy = p.py + (moveY / norm) * p.speed;
+
+                let tileX = Math.floor(nextPx / TILE_SIZE);
+                let tileY = Math.floor(nextPy / TILE_SIZE);
+
+                if (isPassable(tileX, Math.floor(p.py / TILE_SIZE))) p.px = nextPx;
+                if (isPassable(Math.floor(p.px / TILE_SIZE), tileY)) p.py = nextPy;
+            } else if (p.targetPx !== null && p.targetPy !== null) {
+                let dx = p.targetPx - p.px;
+                let dy = p.targetPy - p.py;
+                let dist = Math.hypot(dx, dy);
+
+                if (dist > 3) {
+                    let nextPx = p.px + (dx / dist) * p.speed;
+                    let nextPy = p.py + (dy / dist) * p.speed;
+
+                    let tileX = Math.floor(nextPx / TILE_SIZE);
+                    let tileY = Math.floor(nextPy / TILE_SIZE);
+
+                    if (isPassable(tileX, tileY)) {
+                        p.px = nextPx;
+                        p.py = nextPy;
+                    } else {
+                        p.targetPx = null;
+                        p.targetPy = null;
+                    }
+                } else {
+                    p.targetPx = null;
+                    p.targetPy = null;
+                }
+            }
+
+            p.x = Math.floor(p.px / TILE_SIZE);
+            p.y = Math.floor(p.py / TILE_SIZE);
+
+            // NPC Wandering
+            gameState.entities.polyNPCs.forEach(npc => {
+                npc.moveTimer++;
+                if (npc.moveTimer > 60) {
+                    npc.dir = Math.floor(Math.random() * 4);
+                    npc.moveTimer = 0;
+                }
+                const dirs = [[0, -1], [0, 1], [-1, 0], [1, 0]];
+                const [dx, dy] = dirs[npc.dir];
+                let nx = npc.px + dx * 0.8;
+                let ny = npc.py + dy * 0.8;
+                if (isPassable(Math.floor(nx / TILE_SIZE), Math.floor(ny / TILE_SIZE))) {
+                    npc.px = nx;
+                    npc.py = ny;
+                    npc.x = Math.floor(nx / TILE_SIZE);
+                    npc.y = Math.floor(ny / TILE_SIZE);
+                }
+            });
+
+            // Mono Patrol & Pursuit
+            gameState.entities.monoEnemies.forEach(mono => {
+                let canSee = hasLineOfSight(mono, p);
+                let speed = mono.speed * (canSee ? 1.3 : 0.8);
+
+                let dx = p.px - mono.px;
+                let dy = p.py - mono.py;
+                let dist = Math.hypot(dx, dy);
+
+                if (canSee && dist > 5) {
+                    let nx = mono.px + (dx / dist) * speed;
+                    let ny = mono.py + (dy / dist) * speed;
+                    if (isPassable(Math.floor(nx / TILE_SIZE), Math.floor(mono.py / TILE_SIZE))) mono.px = nx;
+                    if (isPassable(Math.floor(mono.px / TILE_SIZE), Math.floor(ny / TILE_SIZE))) mono.py = ny;
+                } else {
+                    const dirs = [[0, -1], [0, 1], [-1, 0], [1, 0]];
+                    if (Math.random() < 0.03) mono.dir = Math.floor(Math.random() * 4);
+                    const [mdx, mdy] = dirs[mono.dir];
+                    let nx = mono.px + mdx * speed;
+                    let ny = mono.py + mdy * speed;
+                    if (isPassable(Math.floor(nx / TILE_SIZE), Math.floor(ny / TILE_SIZE))) {
+                        mono.px = nx;
+                        mono.py = ny;
+                    } else {
+                        mono.dir = Math.floor(Math.random() * 4);
+                    }
+                }
+
+                mono.x = Math.floor(mono.px / TILE_SIZE);
+                mono.y = Math.floor(mono.py / TILE_SIZE);
+
+                if (Math.hypot(mono.px - p.px, mono.py - p.py) < TILE_SIZE * 0.7) {
+                    triggerEnemyPenalty("Mono caught you!");
+                    let safePos = getRandomPathCell(4);
+                    mono.px = safePos.x * TILE_SIZE + TILE_SIZE / 2;
+                    mono.py = safePos.y * TILE_SIZE + TILE_SIZE / 2;
+                }
+            });
+        }
+
+        // --- Render Engine ---
+        function render() {
+            const ctx = dom.ctx;
+            ctx.clearRect(0, 0, dom.canvas.width, dom.canvas.height);
+
+            // 1. Draw Maze Grid safely
+            if (gameState.maze && gameState.maze.length > 0) {
+                for (let r = 0; r < MAZE_ROWS; r++) {
+                    for (let c = 0; c < MAZE_COLS; c++) {
+                        const tile = gameState.maze[r][c];
+                        const x = c * TILE_SIZE;
+                        const y = r * TILE_SIZE;
+
+                        if (tile === TILE.WALL) {
+                            ctx.fillStyle = '#1e293b';
+                            ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+                            ctx.strokeStyle = '#0f172a';
+                            ctx.strokeRect(x, y, TILE_SIZE, TILE_SIZE);
+                        } else if (tile === TILE.HOUSE) {
+                            ctx.fillStyle = '#b45309';
+                            ctx.fillRect(x + 2, y + 2, TILE_SIZE - 4, TILE_SIZE - 4);
+                            ctx.fillStyle = '#f59e0b';
+                            ctx.fillRect(x + 6, y + 6, TILE_SIZE - 12, TILE_SIZE - 12);
+                            ctx.fillStyle = '#ffffff';
+                            ctx.font = '12px FontAwesome';
+                            ctx.fillText('\uf015', x + 13, y + 25);
+                        } else if (tile === TILE.ONLINE_ZONE) {
+                            ctx.fillStyle = '#0284c7';
+                            ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+                            ctx.fillStyle = '#38bdf8';
+                            ctx.font = '12px FontAwesome';
+                            ctx.fillText('\uf0c0', x + 12, y + 25);
+                        } else {
+                            ctx.fillStyle = '#0f172a';
+                            ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+                            ctx.strokeStyle = '#1e293b';
+                            ctx.strokeRect(x, y, TILE_SIZE, TILE_SIZE);
+                        }
+                    }
+                }
+            }
+
+            // 2. Draw Potions
+            gameState.entities.potions.forEach(pot => {
+                ctx.save();
+                ctx.shadowColor = '#ec4899';
+                ctx.shadowBlur = 10;
+                ctx.fillStyle = '#ec4899';
+                ctx.beginPath();
+                ctx.arc(pot.px, pot.py, 8, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = '#ffffff';
+                ctx.font = '10px FontAwesome';
+                ctx.fillText('\uf0c3', pot.px - 5, pot.py + 3);
+                ctx.restore();
+            });
+
+            // 3. Draw Poly NPCs
+            gameState.entities.polyNPCs.forEach(npc => {
+                ctx.save();
+                if (npc.isFakeMono) {
+                    ctx.shadowColor = '#f43f5e';
+                    ctx.shadowBlur = 12;
+                    ctx.fillStyle = '#38bdf8';
+                } else if (npc.isRelationshipHazard) {
+                    ctx.shadowColor = '#eab308';
+                    ctx.shadowBlur = 8;
+                    ctx.fillStyle = '#a855f7';
+                } else {
+                    ctx.fillStyle = '#38bdf8';
+                }
+
+                ctx.beginPath();
+                ctx.arc(npc.px, npc.py, 12, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.fillStyle = '#ffffff';
+                ctx.font = '12px FontAwesome';
+                ctx.fillText('\uf004', npc.px - 6, npc.py + 4);
+                ctx.restore();
+            });
+
+            // 4. Draw Mono Enemies
+            gameState.entities.monoEnemies.forEach(mono => {
+                ctx.save();
+                ctx.shadowColor = '#f43f5e';
+                ctx.shadowBlur = 15;
+                ctx.fillStyle = '#f43f5e';
+                ctx.beginPath();
+                ctx.arc(mono.px, mono.py, 14, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.fillStyle = '#ffffff';
+                ctx.font = '12px FontAwesome';
+                ctx.fillText('\uf188', mono.px - 6, mono.py + 4);
+                ctx.restore();
+            });
+
+            // 5. Draw Player Character (Poly)
+            const p = gameState.entities.player;
+            ctx.save();
+            ctx.shadowColor = '#38bdf8';
+            ctx.shadowBlur = 15;
+            ctx.fillStyle = '#0284c7';
+            ctx.beginPath();
+            ctx.arc(p.px, p.py, 15, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = '#38bdf8';
+            ctx.stroke();
+
+            ctx.fillStyle = '#ffffff';
+            ctx.font = '14px FontAwesome';
+            ctx.fillText('\uf007', p.px - 6, p.py + 5);
+            ctx.restore();
+        }
+
+        // --- Timer Engine ---
+        function startTimer() {
+            clearInterval(gameState.timerInterval);
+            gameState.timerInterval = setInterval(() => {
+                if (!gameState.active || gameState.paused) return;
+                gameState.timeRemainingSec--;
+
+                if (gameState.timeRemainingSec <= 0) {
+                    gameState.timeRemainingSec = 0;
+                    gameOver(false, "Time's up! Maze timer expired!");
+                }
+                updateHUD();
+            }, 1000);
+        }
+
+        function updateHUD() {
+            dom.hudPlayerName.innerText = gameState.playerName;
+            dom.hudLevel.innerText = `${gameState.level} / 100`;
+            dom.hudHpText.innerText = `${gameState.health} HP`;
+            dom.hudHpBar.style.width = `${(gameState.health / gameState.maxHealth) * 100}%`;
+
+            const mins = Math.floor(gameState.timeRemainingSec / 60);
+            const secs = gameState.timeRemainingSec % 60;
+            dom.hudTimer.innerText = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+
+            dom.hudCharmed.innerText = gameState.charmedCount;
+            dom.hudTarget.innerText = gameState.targetPolyCount;
+            dom.hudPotions.innerText = `${gameState.carriedPotions} (${gameState.securedPotions} Saved)`;
+        }
+
+        function advanceLevel() {
+            if (gameState.level >= 100) {
+                gameOver(true, "Congratulations! You completed all 100 Levels!");
+                return;
+            }
+            gameState.level++;
+            setupLevelConfig(gameState.level);
+            saveProgressLocally();
+        }
+
+        function gameOver(victory = false, message = "") {
+            gameState.active = false;
+            clearInterval(gameState.timerInterval);
+
+            if (victory) sfx.playVictory();
+            else sfx.playDamage();
+
+            saveHighScore();
+
+            document.getElementById('end-game-title').innerText = victory ? "GAME COMPLETED!" : "GAME OVER";
+            document.getElementById('end-game-message').innerText = victory 
+                ? "Congratulations on completing Don’t Chase The Mono Maze! Long Live Polyamory Maze!"
+                : message;
+
+            document.getElementById('end-score').innerText = gameState.score;
+            document.getElementById('end-charmed').innerText = gameState.charmedCount;
+            document.getElementById('end-level').innerText = gameState.level;
+            document.getElementById('end-potions').innerText = gameState.securedPotions;
+
+            dom.modalEnd.classList.remove('hidden');
+        }
+
+        // --- Local Storage & High Scores System ---
+        function saveProgressLocally() {
+            const saveData = {
+                playerName: gameState.playerName,
+                level: gameState.level,
+                score: gameState.score,
+                health: gameState.health,
+                charmedCount: gameState.charmedCount,
+                carriedPotions: gameState.carriedPotions,
+                securedPotions: gameState.securedPotions,
+                timeRemainingSec: gameState.timeRemainingSec,
+                timestamp: new Date().toISOString()
+            };
+            localStorage.setItem(`mono_maze_save_${gameState.playerName}`, JSON.stringify(saveData));
+            updateSavedNamesDropdown();
+        }
+
+        function loadProgress(playerName) {
+            const raw = localStorage.getItem(`mono_maze_save_${playerName}`);
+            if (!raw) return false;
+            const data = JSON.parse(raw);
+
+            gameState.playerName = data.playerName;
+            gameState.level = data.level;
+            gameState.score = data.score;
+            gameState.health = data.health;
+            gameState.charmedCount = data.charmedCount;
+            gameState.carriedPotions = data.carriedPotions;
+            gameState.securedPotions = data.securedPotions;
+
+            setupLevelConfig(gameState.level);
+            gameState.timeRemainingSec = data.timeRemainingSec;
+            return true;
+        }
+
+        function saveHighScore() {
+            let scores = JSON.parse(localStorage.getItem('mono_maze_high_scores') || '[]');
+            scores.push({
+                name: gameState.playerName,
+                score: gameState.score,
+                level: gameState.level,
+                date: new Date().toLocaleDateString()
+            });
+            scores.sort((a, b) => b.score - a.score);
+            scores = scores.slice(0, 5);
+            localStorage.setItem('mono_maze_high_scores', JSON.stringify(scores));
+            renderLeaderboard();
+        }
+
+        function renderLeaderboard() {
+            let scores = JSON.parse(localStorage.getItem('mono_maze_high_scores') || '[]');
+            if (scores.length === 0) {
+                dom.leaderboardList.innerHTML = `<div class="text-center text-slate-500 py-2 italic">No recorded high scores yet!</div>`;
+                return;
+            }
+            dom.leaderboardList.innerHTML = scores.map((s, i) => `
+                <div class="flex justify-between items-center bg-slate-900/60 px-3 py-1.5 rounded-lg border border-slate-800">
+                    <span class="font-bold text-sky-400">#${i+1} ${s.name}</span>
+                    <span class="text-amber-300 font-mono">${s.score} pts (Lvl ${s.level})</span>
+                </div>
+            `).join('');
+        }
+
+        function updateSavedNamesDropdown() {
+            dom.selectSavedNames.innerHTML = `<option value="">Saved Players...</option>`;
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key.startsWith('mono_maze_save_')) {
+                    const pName = key.replace('mono_maze_save_', '');
+                    dom.selectSavedNames.innerHTML += `<option value="${pName}">${pName}</option>`;
+                }
+            }
+        }
+
+        // --- Main Game Loop ---
+        function loop() {
+            updateGameLogic();
+            render();
+            requestAnimationFrame(loop);
+        }
+
+        // --- Control Handlers & Initializers ---
+        function startNewGame() {
+            sfx.init();
+            const name = dom.inputPlayerName.value.trim() || "Poly Explorer";
+            gameState.playerName = name;
+            gameState.score = 0;
+            gameState.health = 100;
+            gameState.charmedCount = 0;
+            gameState.carriedPotions = 0;
+            gameState.securedPotions = 0;
+
+            setupLevelConfig(1);
+            gameState.active = true;
+            gameState.paused = false;
+
+            dom.modalMain.classList.add('hidden');
+            dom.modalEnd.classList.add('hidden');
+            startTimer();
+        }
+
+        function resumeGame() {
+            sfx.init();
+            const name = dom.selectSavedNames.value || dom.inputPlayerName.value.trim();
+            if (loadProgress(name)) {
+                gameState.active = true;
+                gameState.paused = false;
+                dom.modalMain.classList.add('hidden');
+                dom.modalPause.classList.add('hidden');
+                startTimer();
+                showToast("Loaded saved game!");
+            } else {
+                showToast("No save state found for this name!");
+            }
+        }
+
+        // Event Bindings
+        dom.btnStartNew.addEventListener('click', startNewGame);
+        dom.btnResumeGame.addEventListener('click', resumeGame);
+
+        dom.btnPause.addEventListener('click', () => {
+            if (!gameState.active) return;
+            gameState.paused = true;
+            dom.modalPause.classList.remove('hidden');
+        });
+
+        dom.btnResumeUnpause.addEventListener('click', () => {
+            gameState.paused = false;
+            dom.modalPause.classList.add('hidden');
+        });
+
+        dom.btnManualSave.addEventListener('click', () => {
+            saveProgressLocally();
+            showToast("Game progress saved locally!");
+        });
+
+        dom.btnExitMainMenu.addEventListener('click', () => {
+            gameState.active = false;
+            clearInterval(gameState.timerInterval);
+            dom.modalPause.classList.add('hidden');
+            dom.modalMain.classList.remove('hidden');
+        });
+
+        dom.btnEndReturn.addEventListener('click', () => {
+            dom.modalEnd.classList.add('hidden');
+            dom.modalMain.classList.remove('hidden');
+        });
+
+        dom.btnSoundToggle.addEventListener('click', () => {
+            sfx.enabled = !sfx.enabled;
+            document.getElementById('sound-text').innerText = sfx.enabled ? "Audio: ON" : "Audio: OFF";
+            document.getElementById('sound-icon').className = sfx.enabled ? "fa-solid fa-volume-high text-xs" : "fa-solid fa-volume-xmark text-xs";
+        });
+
+        dom.selectSavedNames.addEventListener('change', (e) => {
+            if (e.target.value) {
+                dom.inputPlayerName.value = e.target.value;
+                dom.btnResumeGame.disabled = false;
+            }
+        });
+
+        window.onload = () => {
+            resizeCanvas();
+            renderLeaderboard();
+            updateSavedNamesDropdown();
+            requestAnimationFrame(loop);
+        };
+
+        window.onresize = () => {
+            resizeCanvas();
+        };
+    </script>
+</body>
+</html>
